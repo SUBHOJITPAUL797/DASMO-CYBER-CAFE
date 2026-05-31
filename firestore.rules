@@ -17,6 +17,7 @@ service cloud.firestore {
              request.auth.token.email_verified == true;
     }
 
+    // Validate booking ID characters and length to guard against resource exhaustion/DDoS
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -30,7 +31,10 @@ service cloud.firestore {
     // Individual bookings
     match /bookings/{bookingId} {
       allow read: if isAdmin();
-      allow create: if request.resource.data.name is string 
+      
+      allow create: if isValidId(bookingId)
+                   && request.resource.data.id == bookingId
+                   && request.resource.data.name is string 
                    && request.resource.data.name.size() <= 150
                    && request.resource.data.mobile is string
                    && request.resource.data.mobile.size() <= 30
@@ -40,7 +44,11 @@ service cloud.firestore {
                    && request.resource.data.date.size() <= 30
                    && request.resource.data.time is string
                    && request.resource.data.time.size() <= 100
-                   && existsAfter(/databases/$(database)/documents/client_limits/$(request.resource.data.mobile));
+                   && request.resource.data.createdAt is string
+                   && request.resource.data.createdAt.size() <= 100
+                   // Server-side relational tie: Ensure the booking ID is atomically registered in user's rate limits
+                   && getAfter(/databases/$(database)/documents/client_limits/$(request.resource.data.mobile)).data.bookingIds.hasAll([bookingId]);
+
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
@@ -49,8 +57,13 @@ service cloud.firestore {
     match /client_limits/{phoneNumber} {
       allow read: if true;
       allow write: if isAdmin() || (
-        request.resource.data.bookingIds is list
+        isValidId(phoneNumber)
+        && request.resource.data.phoneNumber == phoneNumber
+        && request.resource.data.bookingIds is list
         && request.resource.data.bookingIds.size() <= get(/databases/$(database)/documents/settings/catalog).data.bookingConfig.limitPerPhone
+        // Server-side security enforcer: Regular clients are strictly prohibited from clearing or deleting 
+        // existing booking references from their tracking list. Only administrators can process or clear slots.
+        && (resource == null || request.resource.data.bookingIds.hasAll(resource.data.bookingIds))
       );
     }
   }
