@@ -32,14 +32,8 @@ export default function Services() {
     return matchesCategory && matchesSearch;
   });
 
-  if (isLoading) {
-    return (
-      <div className="py-24 text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
-        <p className="text-slate-400 mt-4 font-bold text-sm">Synchronizing Digital Service Directory...</p>
-      </div>
-    );
-  }
+  // Render the Services component instantly with default data; it will update in real-time when the snapshot resolves.
+
 
   return (
     <section id="services" className="py-24 bg-slate-950 text-left relative overflow-hidden">

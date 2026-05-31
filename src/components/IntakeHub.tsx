@@ -1,4 +1,5 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, useRef } from 'react';
+import jsQR from 'jsqr';
 import { useCatalog } from '../context/CatalogContext';
 import { db } from '../firebase';
 import { 
@@ -6,7 +7,7 @@ import {
 } from 'firebase/firestore';
 import { 
   Ticket, Calendar, CalendarDays, User, Phone, CheckSquare, Layers, 
-  Download, CheckCircle, Sparkles, FileStack, AlertCircle, RefreshCw, QrCode, Clock
+  Download, CheckCircle, Sparkles, FileStack, AlertCircle, RefreshCw, QrCode, Clock, Camera, X
 } from 'lucide-react';
 import { isBookingExpired, getSlotStatus, getSlotEndDateTime } from '../utils/bookingUtils';
 
@@ -32,6 +33,7 @@ export default function IntakeHub() {
   const [mobile, setMobile] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'central' | 'state' | 'special' | 'support'>('central');
   const [selectedServiceId, setSelectedServiceId] = useState('');
+  const [customWorkName, setCustomWorkName] = useState('');
   const [walkinDate, setWalkinDate] = useState('');
   const [walkinTime, setWalkinTime] = useState('');
   
@@ -47,6 +49,181 @@ export default function IntakeHub() {
   const [existingDbIds, setExistingDbIds] = useState<Set<string>>(new Set());
   const [isDbLinked, setIsDbLinked] = useState(false);
   const [vaultSubTab, setVaultSubTab] = useState<'active' | 'history'>('active');
+
+  // Staff scanning and check-in system
+  const [isStaffScannerOpen, setIsStaffScannerOpen] = useState(false);
+  const [isStaffCameraActive, setIsStaffCameraActive] = useState(false);
+  const [staffCameraError, setStaffCameraError] = useState<string | null>(null);
+  const [staffScanResult, setStaffScanResult] = useState<{
+    success: boolean;
+    message: string;
+    booking?: {
+      id: string;
+      name: string;
+      mobile: string;
+      serviceName: string;
+      walkinDate: string;
+      walkinTime: string;
+    };
+  } | null>(null);
+  const [isStaffVerifying, setIsStaffVerifying] = useState(false);
+
+  // Video and canvas refs for staff check-in
+  const staffVideoRef = useRef<HTMLVideoElement | null>(null);
+  const staffCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const staffStreamRef = useRef<MediaStream | null>(null);
+  const staffAnimationFrameRef = useRef<number | null>(null);
+
+  // Auto clean up staff camera stream on component unmount
+  useEffect(() => {
+    return () => {
+      stopStaffCamera();
+    };
+  }, []);
+
+  const stopStaffCamera = () => {
+    if (staffAnimationFrameRef.current) {
+      cancelAnimationFrame(staffAnimationFrameRef.current);
+      staffAnimationFrameRef.current = null;
+    }
+    if (staffStreamRef.current) {
+      staffStreamRef.current.getTracks().forEach(track => track.stop());
+      staffStreamRef.current = null;
+    }
+    setIsStaffCameraActive(false);
+  };
+
+  const startStaffCamera = async () => {
+    setStaffCameraError(null);
+    setStaffScanResult(null);
+    try {
+      const constraints = { video: { facingMode: 'environment' } };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      staffStreamRef.current = stream;
+      
+      if (staffVideoRef.current) {
+        staffVideoRef.current.srcObject = stream;
+        staffVideoRef.current.setAttribute('playsinline', 'true'); // Required for iOS
+        staffVideoRef.current.play();
+        setIsStaffCameraActive(true);
+        staffAnimationFrameRef.current = requestAnimationFrame(staffTick);
+      }
+    } catch (err: any) {
+      console.error("Staff Camera access error:", err);
+      setStaffCameraError(
+        "Camera access denied or unsupported. (If using AI Studio iframe preview, try the File Upload or manual simulator options below!)"
+      );
+    }
+  };
+
+  const staffTick = () => {
+    if (!staffVideoRef.current || staffVideoRef.current.readyState !== staffVideoRef.current.HAVE_ENOUGH_DATA) {
+      staffAnimationFrameRef.current = requestAnimationFrame(staffTick);
+      return;
+    }
+
+    const video = staffVideoRef.current;
+    let canvas = staffCanvasRef.current;
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+    }
+    
+    const context = canvas.getContext('2d');
+    if (context) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: "dontInvert"
+      });
+
+      if (code) {
+        try {
+          let data = code.data;
+          let parsedId = data;
+
+          if (data.startsWith('{')) {
+            const parsed = JSON.parse(data);
+            parsedId = parsed.id || data;
+          }
+
+          handleStaffCheckIn(parsedId);
+          return;
+        } catch (e) {
+          handleStaffCheckIn(code.data.trim());
+          return;
+        }
+      }
+    }
+
+    staffAnimationFrameRef.current = requestAnimationFrame(staffTick);
+  };
+
+  const handleStaffCheckIn = async (bookingId: string) => {
+    stopStaffCamera();
+    setIsStaffVerifying(true);
+    setStaffScanResult(null);
+
+    try {
+      const bookingRef = doc(db, 'bookings', bookingId);
+      const bookingSnap = await getDoc(bookingRef);
+
+      if (!bookingSnap.exists()) {
+        setStaffScanResult({
+          success: false,
+          message: `Booking verification failed! Slot ID "${bookingId}" not found in current bookings database.`
+        });
+        setIsStaffVerifying(false);
+        return;
+      }
+
+      const bookingData = bookingSnap.data();
+
+      // Delete the booking from live slots
+      const batch = writeBatch(db);
+      batch.delete(bookingRef);
+
+      // Free user limit slot
+      if (bookingData.mobile) {
+        const limitRef = doc(db, 'client_limits', bookingData.mobile);
+        const limitSnap = await getDoc(limitRef);
+        if (limitSnap.exists()) {
+          const limitData = limitSnap.data();
+          const updatedIds = (limitData.bookingIds || []).filter((id: string) => id !== bookingId);
+          batch.set(limitRef, {
+            ...limitData,
+            bookingIds: updatedIds,
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      await batch.commit();
+
+      setStaffScanResult({
+        success: true,
+        message: `Successfully Checked-in and Validated applicant "${bookingData.name || 'N/A'}" for ${bookingData.work || 'Selected Service'}.`,
+        booking: {
+          id: bookingId,
+          name: bookingData.name || 'N/A',
+          mobile: bookingData.mobile || 'N/A',
+          serviceName: bookingData.work || 'Selected Service',
+          walkinDate: bookingData.date || 'N/A',
+          walkinTime: bookingData.time || 'N/A'
+        }
+      });
+    } catch (err: any) {
+      console.error("Staff scan check-in error:", err);
+      setStaffScanResult({
+        success: false,
+        message: `Firestore Check-in failed: ${err.message}`
+      });
+    } finally {
+      setIsStaffVerifying(false);
+    }
+  };
 
   // Sync saved tokens existence from database
   useEffect(() => {
@@ -170,6 +347,11 @@ export default function IntakeHub() {
       return;
     }
 
+    if (selectedServiceId === 'other' && !customWorkName.trim()) {
+      setBookingError("Please specify your custom work or service name!");
+      return;
+    }
+
     const cleanPhone = mobile.replace(/[^0-9+]/g, '');
     if (cleanPhone.length < 8) {
       setBookingError("Please enter a valid telephone contact number.");
@@ -208,17 +390,22 @@ export default function IntakeHub() {
       }
 
       // 2. Form reservation packages
+      const isOtherSelection = selectedServiceId === 'other';
+      const finalServiceName = isOtherSelection ? customWorkName.trim() : (currentServiceObj ? currentServiceObj.name : "Digital Consultation");
+      const finalDocuments = isOtherSelection ? ["Identity Proof / Aadhaar Copy", "Active Mobile Device"] : (currentServiceObj ? currentServiceObj.documents : ["Identity Proof", "Active Mobile"]);
+      const finalApproxFee = isOtherSelection ? 100 : (currentServiceObj ? currentServiceObj.approxFee : 100);
+
       const tId = 'DSM-' + Math.floor(100000 + Math.random() * 900000);
       const tokenObj: PriorityToken = {
         id: tId,
         name: name.trim(),
         mobile: cleanPhone,
         serviceCategory: selectedCategory,
-        serviceName: currentServiceObj ? currentServiceObj.name : "Digital Consultation",
+        serviceName: finalServiceName,
         walkinDate,
         walkinTime,
-        documentsNeeded: currentServiceObj ? currentServiceObj.documents : ["Identity Proof", "Active Mobile"],
-        approxFee: currentServiceObj ? currentServiceObj.approxFee : 100,
+        documentsNeeded: finalDocuments,
+        approxFee: finalApproxFee,
         createdAt: new Date().toLocaleDateString('en-IN', { hour: '2-digit', minute: '2-digit' })
       };
 
@@ -256,6 +443,7 @@ export default function IntakeHub() {
       // Clean form parameters
       setName('');
       setMobile('');
+      setCustomWorkName('');
       setWalkinDate('');
       setWalkinTime('');
     } catch (err: any) {
@@ -421,7 +609,12 @@ export default function IntakeHub() {
                     <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">Select Digital Scheme *</label>
                     <select
                       value={selectedServiceId}
-                      onChange={(e) => setSelectedServiceId(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedServiceId(e.target.value);
+                        if (e.target.value !== 'other') {
+                          setCustomWorkName('');
+                        }
+                      }}
                       className="w-full bg-[#151b2e] text-slate-100 px-4 py-3 rounded-xl border border-white/10 focus:border-blue-500 focus:outline-none font-semibold text-sm transition-all"
                     >
                       {activeServicesList.map((svc) => (
@@ -429,8 +622,23 @@ export default function IntakeHub() {
                           {svc.name}
                         </option>
                       ))}
+                      <option value="other">Other / Custom Service Option</option>
                     </select>
                   </div>
+
+                  {selectedServiceId === 'other' && (
+                    <div className="md:col-span-2 space-y-2">
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">Specify Custom Work Name *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex. CSC Voter Card Printing or Electric Bill Payments"
+                        value={customWorkName}
+                        onChange={(e) => setCustomWorkName(e.target.value)}
+                        className="w-full bg-[#151b2e] text-slate-100 px-4 py-3 rounded-xl border border-white/10 focus:border-blue-500 focus:outline-none font-medium transition-all"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid md:grid-cols-12 gap-6 items-start">
@@ -518,7 +726,25 @@ export default function IntakeHub() {
                   </div>
                 </div>
 
-                {currentServiceObj ? (
+                {selectedServiceId === 'other' ? (
+                  <div className="space-y-5">
+                    <div className="bg-[#151b2e]/60 border border-white/5 p-4 rounded-xl">
+                      <span className="text-[10px] text-blue-400 font-extrabold uppercase tracking-widest">Active Choice</span>
+                      <h4 className="text-lg font-bold text-white mt-1">{customWorkName || "General Custom Work"}</h4>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed font-semibold">Custom administrative request handled directly at countermeasures.</p>
+                    </div>
+
+                    <div className="space-y-2.5">
+                       <span className="text-xs font-bold text-slate-300 uppercase tracking-widest block mb-1">Checklist:</span>
+                       {["Identity Proof / Aadhaar Copy", "Active Mobile Device"].map((doc: string, idx: number) => (
+                          <div key={idx} className="flex items-start gap-3 bg-[#030712]/50 p-3 rounded-lg border border-white/5">
+                             <span className="w-5.5 h-5.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{idx + 1}</span>
+                             <span className="text-slate-300 font-semibold text-sm leading-tight">{doc}</span>
+                          </div>
+                       ))}
+                    </div>
+                  </div>
+                ) : currentServiceObj ? (
                   <div className="space-y-5">
                     <div className="bg-[#151b2e]/60 border border-white/5 p-4 rounded-xl">
                       <span className="text-[10px] text-blue-400 font-extrabold uppercase tracking-widest">Active Choice</span>
@@ -530,8 +756,8 @@ export default function IntakeHub() {
                        <span className="text-xs font-bold text-slate-300 uppercase tracking-widest block mb-1">Checklist:</span>
                        {currentServiceObj.documents.map((doc: string, idx: number) => (
                           <div key={idx} className="flex items-start gap-3 bg-[#030712]/50 p-3 rounded-lg border border-white/5">
-                             <span className="w-5 h-5 rounded-md bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{idx + 1}</span>
-                             <span className="text-slate-300 font-medium text-sm leading-tight">{doc}</span>
+                             <span className="w-5.5 h-5.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{idx + 1}</span>
+                             <span className="text-slate-300 font-semibold text-sm leading-tight">{doc}</span>
                           </div>
                        ))}
                     </div>
@@ -544,10 +770,10 @@ export default function IntakeHub() {
                 )}
               </div>
 
-              {currentServiceObj && (
+              {(currentServiceObj || selectedServiceId === 'other') && (
                 <div className="pt-6 border-t border-white/10 mt-6 flex justify-between items-center text-xs font-bold">
                   <span className="text-slate-400">Approx. Walk-In Fee:</span>
-                  <span className="text-amber-400 text-base font-black">₹{currentServiceObj.approxFee} (+ GST / stamp if any)</span>
+                  <span className="text-amber-400 text-base font-black">₹{selectedServiceId === 'other' ? 100 : currentServiceObj?.approxFee} (+ GST / stamp if any)</span>
                 </div>
               )}
             </div>
@@ -678,6 +904,191 @@ export default function IntakeHub() {
         ) : (
           /* Vault tokens list view */
           <div className="max-w-4xl mx-auto space-y-6">
+             {/* Prominent Check-In / Scan QR Section for Staff Counter */}
+             <div className="bg-gradient-to-r from-blue-950/40 via-[#0e172a] to-blue-950/40 border border-blue-500/10 rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl pointer-events-none" />
+                <div className="flex items-center gap-4">
+                  <div className="bg-blue-500/10 text-blue-400 p-3.5 rounded-2xl border border-blue-500/20 shadow-lg shadow-blue-500/5">
+                     <QrCode size={24} className="animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-black text-white text-lg tracking-wide uppercase">Front Desk Counter Check-In</h3>
+                    <p className="text-xs text-slate-400 font-semibold mt-0.5 leading-relaxed">Staff: Instantly verify barcodes and check-in client booking slips via camera feed.</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => { setIsStaffScannerOpen(true); startStaffCamera(); }}
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3.5 rounded-xl text-sm transition-all shadow-lg shadow-blue-500/15 cursor-pointer flex items-center gap-2 group shrink-0"
+                >
+                  <Camera size={16} className="group-hover:rotate-12 transition-transform" />
+                  Scan QR Code Slip
+                </button>
+             </div>
+
+             {/* Live Camera Scanner Overlay Modal */}
+             {isStaffScannerOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-hidden">
+                   <div className="w-full max-w-lg bg-[#0b0f19] border border-white/10 rounded-[2rem] p-6 md:p-8 shadow-2xl relative overflow-y-auto max-h-[90vh] custom-scroll">
+                      
+                      {/* Close button */}
+                      <button 
+                        onClick={() => { stopStaffCamera(); setIsStaffScannerOpen(false); }}
+                        className="absolute top-6 right-6 text-slate-400 hover:text-white p-2 hover:bg-white/5 rounded-xl transition-all"
+                        title="Close Scanner"
+                      >
+                        <X size={20} />
+                      </button>
+
+                      {/* Modal Header */}
+                      <div className="flex items-center gap-3.5 border-b border-white/10 pb-5 mb-6">
+                         <div className="bg-blue-500/15 text-blue-400 p-3 rounded-2xl border border-blue-500/20">
+                            <QrCode size={22} className="animate-pulse" />
+                         </div>
+                         <div>
+                            <h4 className="font-display font-black text-white text-sm tracking-widest uppercase">COUNTER BARCODE & QR INSTANT CHECK-IN</h4>
+                            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mt-0.5">High precision front-desk verification scanner</p>
+                         </div>
+                      </div>
+
+                      {/* Live Camera Feed inside the modal */}
+                      <div className="relative w-full aspect-square max-w-sm mx-auto bg-black rounded-2xl border border-white/10 overflow-hidden flex items-center justify-center">
+                         {isStaffCameraActive && (
+                            <video
+                              ref={staffVideoRef}
+                              className="w-full h-full object-cover rounded-2xl"
+                            />
+                         )}
+                         {/* Neon laser scan bar overlay */}
+                         <div className="absolute inset-x-0 top-0 h-0.5 bg-blue-500 animate-[bounce_2s_infinite] shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
+                         <div className="absolute inset-0 border-[32px] border-black/40 pointer-events-none" />
+                         
+                         {/* Highlight boundary corners with subtle 'pulse' animation to improve operator feedback loop when scanning */}
+                         <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                            <div className="w-48 h-48 border-4 border-[#3b82f6] rounded-xl animate-[pulse_1.2s_infinite] flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.8)]">
+                               <div className="w-44 h-44 border-2 border-dashed border-blue-400/30 rounded-lg" />
+                            </div>
+                         </div>
+                         
+                         <span className="absolute bottom-3 bg-black/80 text-[10px] text-blue-300 font-extrabold px-3 py-1 rounded-full border border-blue-500/20 tracking-wider">
+                            PLACE QR CODE CENTRAL IN THE BOX
+                         </span>
+                      </div>
+
+                      {/* Show Camera Errors with useful guidance */}
+                      {staffCameraError && (
+                         <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-300 leading-relaxed font-semibold mt-4">
+                            <div className="flex gap-1.5 items-start">
+                               <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                               <span className="font-sans">
+                                  {staffCameraError}
+                                </span>
+                            </div>
+                         </div>
+                      )}
+
+                      {/* Verification status screen */}
+                      {isStaffVerifying && (
+                         <div className="p-5 text-center text-slate-400 font-mono text-xs flex flex-col items-center justify-center gap-2 bg-black/30 border border-white/5 rounded-2xl mt-4">
+                            <RefreshCw size={24} className="animate-spin text-blue-500" />
+                            <span>Syncing entry token with Firestore database...</span>
+                         </div>
+                      )}
+
+                      {staffScanResult && (
+                         <div className={`p-4 rounded-xl border font-sans mt-4 ${staffScanResult.success ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300 animate-[bounce_0.5s_ease_1]' : 'bg-rose-500/10 border-rose-500/20 text-rose-300'}`}>
+                            <div className="flex gap-3 items-start">
+                               {staffScanResult.success ? (
+                                  <CheckSquare size={18} className="shrink-0 text-emerald-400 mt-0.5" />
+                               ) : (
+                                  <AlertCircle size={18} className="shrink-0 text-rose-400 mt-0.5" />
+                               )}
+                               <div className="space-y-2 flex-1">
+                                  <h6 className="font-bold text-xs uppercase tracking-wider">{staffScanResult.success ? "VERIFICATION SUCCESSFUL" : "VERIFICATION ERROR"}</h6>
+                                  <p className="text-xs text-slate-300 font-semibold leading-relaxed">{staffScanResult.message}</p>
+                                  
+                                  {staffScanResult.booking && (
+                                     <div className="bg-black/40 rounded-lg p-3 text-[11px] border border-white/5 space-y-1 text-slate-300 mt-1">
+                                        <p><strong>Applicant Name:</strong> {staffScanResult.booking.name}</p>
+                                        <p><strong>Mobile Number:</strong> {staffScanResult.booking.mobile}</p>
+                                        <p><strong>Requested Work:</strong> {staffScanResult.booking.serviceName}</p>
+                                        <p><strong>Appointment Date/Slot:</strong> {staffScanResult.booking.walkinDate} • {staffScanResult.booking.walkinTime}</p>
+                                     </div>
+                                  )}
+                               </div>
+                               <button 
+                                 onClick={() => setStaffScanResult(null)}
+                                 className="text-slate-400 hover:text-white p-1 hover:bg-white/5 rounded"
+                               >
+                                 <X size={14} />
+                               </button>
+                            </div>
+                         </div>
+                      )}
+
+                      {/* Manual Verification and Simulation inside the modal */}
+                      <div className="mt-6 border-t border-white/5 pt-5 space-y-4">
+                         <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Operator Manual Token Match Check-in</label>
+                            <div className="flex gap-2">
+                               <input
+                                 type="text"
+                                 id="staffManualId"
+                                 placeholder="Ex: dsm-xxxx-xxxx"
+                                 className="flex-1 bg-black/40 text-xs text-slate-200 px-3 py-2.5 rounded-xl border border-white/10 focus:outline-none focus:border-blue-500 font-semibold uppercase"
+                                 onKeyDown={(e) => {
+                                   if (e.key === 'Enter') {
+                                     handleStaffCheckIn((e.target as HTMLInputElement).value);
+                                     (e.target as HTMLInputElement).value = '';
+                                   }
+                                 }}
+                               />
+                               <button
+                                 onClick={() => {
+                                   const el = document.getElementById('staffManualId') as HTMLInputElement;
+                                   if (el && el.value) {
+                                     handleStaffCheckIn(el.value);
+                                     el.value = '';
+                                   }
+                                 }}
+                                 className="bg-blue-600/20 text-blue-400 border border-blue-500/25 hover:bg-blue-600 hover:text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                               >
+                                 Check-In
+                               </button>
+                            </div>
+                         </div>
+
+                         {/* Quick simulated check-in selector in dev */}
+                         <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Quick-Test Check-In Simulation</label>
+                            <select
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  handleStaffCheckIn(e.target.value);
+                                  e.target.value = '';
+                                }
+                              }}
+                              defaultValue=""
+                              className="w-full bg-[#030712] text-xs text-slate-300 px-3 py-2.5 rounded-xl border border-white/10 focus:outline-none focus:border-[#22c55e] font-semibold text-white"
+                            >
+                              <option value="" disabled>-- Select a Live Ticket to Simulate Scanning --</option>
+                              {savedTokens.filter(t => existingDbIds.has(t.id)).length === 0 ? (
+                                <option value="" disabled>No active walk-in tokens in local state to scan</option>
+                              ) : (
+                                savedTokens.filter(t => existingDbIds.has(t.id)).map(t => (
+                                  <option key={t.id} value={t.id}>
+                                    {t.name} - {t.serviceName} ({t.id})
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                         </div>
+                      </div>
+
+                   </div>
+                </div>
+             )}
+
              {savedTokens.length === 0 ? (
                 <div className="bg-[#0b0f1a] border border-white/5 p-12 text-center rounded-3xl">
                    <Ticket size={48} className="mx-auto text-slate-600 mb-4 stroke-[1]" />

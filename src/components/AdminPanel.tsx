@@ -532,22 +532,46 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                               </button>
 
                               <div className="grid md:grid-cols-12 gap-4">
-                                <div className="md:col-span-8 space-y-2">
+                                <div className="md:col-span-6 space-y-2">
                                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Scheme/Service Name</label>
                                   <input
                                     type="text"
                                     value={svc.name}
                                     onChange={(e) => updateServiceField(sIdx, 'name', e.target.value)}
-                                    className="w-full bg-[#0b0f19] border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-semibold"
+                                    className="w-full bg-[#0b0f19] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 font-semibold"
                                   />
                                 </div>
-                                <div className="md:col-span-4 space-y-2">
+                                <div className="md:col-span-3 space-y-2">
+                                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Service Icon</label>
+                                  <select
+                                    value={typeof svc.icon === 'string' ? svc.icon : (svc.icon?.name || 'FileText')}
+                                    onChange={(e) => updateServiceField(sIdx, 'icon', e.target.value)}
+                                    className="w-full bg-[#0b0f19] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 font-bold"
+                                  >
+                                    <option value="FileText">📄 FileText</option>
+                                    <option value="Globe2">🌐 Globe</option>
+                                    <option value="ScanFace">👤 Face ID</option>
+                                    <option value="ShieldPlus">🛡️ Shield Plus</option>
+                                    <option value="Tractor">🚜 Tractor</option>
+                                    <option value="FileInput">📥 Input</option>
+                                    <option value="Star">⭐ Star</option>
+                                    <option value="Wrench">🔧 Wrench</option>
+                                    <option value="MonitorSmartphone">💻 Monitor</option>
+                                    <option value="Cpu">🧠 CPU</option>
+                                    <option value="ShieldCheck">✅ ShieldOK</option>
+                                    <option value="FileArchive">📦 Archive</option>
+                                    <option value="Printer">🖨️ Printer</option>
+                                    <option value="Laptop">💻 Laptop</option>
+                                    <option value="Layers">🥞 Layers</option>
+                                  </select>
+                                </div>
+                                <div className="md:col-span-3 space-y-2">
                                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Approx Fee (₹)</label>
                                   <input
                                     type="number"
                                     value={svc.approxFee}
                                     onChange={(e) => updateServiceField(sIdx, 'approxFee', parseInt(e.target.value) || 0)}
-                                    className="w-full bg-[#0b0f19] border border-white/10 rounded-xl px-3.5 py-2 text-sm text-amber-400 focus:outline-none focus:border-blue-500 font-mono font-bold"
+                                    className="w-full bg-[#0b0f19] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-amber-400 focus:outline-none focus:border-blue-500 font-mono font-bold"
                                   />
                                 </div>
                               </div>

@@ -1,45 +1,118 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, Check, AlertCircle, Compass, RefreshCw, Languages, X } from 'lucide-react';
+import { Globe, Check, Compass, RefreshCw, Languages, X } from 'lucide-react';
 
 // Cookie helper
 const setTranslationCookie = (lang: string) => {
-  const domain = window.location.hostname.replace('www.', '');
-  const value = `/en/${lang}`;
-  const expires = "expires=Fri, 31 Dec 9999 23:59:59 GMT";
+  const expired = "expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  const suffix = "; SameSite=None; Secure";
   
-  document.cookie = `googtrans=${value}; path=/; ${expires};`;
-  document.cookie = `googtrans=${value}; path=/; domain=.${domain}; ${expires};`;
-  document.cookie = `googtrans=${value}; path=/; domain=${window.location.hostname}; ${expires};`;
-};
+  // Clear any existing cookies to prevent conflict or duplicates
+  document.cookie = `googtrans=; path=/; ${expired}${suffix}`;
+  document.cookie = `googtrans=; path=/; domain=${window.location.hostname}; ${expired}${suffix}`;
+  document.cookie = `googtrans=; path=/; domain=.${window.location.hostname}; ${expired}${suffix}`;
+  
+  // Also clean up potential parent subdomains if any
+  const parts = window.location.hostname.split('.');
+  if (parts.length > 2) {
+    const parentDomain = parts.slice(1).join('.');
+    if (!parentDomain.endsWith('run.app')) {
+      document.cookie = `googtrans=; path=/; domain=${parentDomain}; ${expired}${suffix}`;
+      document.cookie = `googtrans=; path=/; domain=.${parentDomain}; ${expired}${suffix}`;
+    }
+  }
 
-// Auto-trigger Google combo
-export const triggerGoogleTranslate = (langCode: string) => {
-  setTranslationCookie(langCode);
-  localStorage.setItem('dasmo_lang_choice', langCode);
-
-  const selectCombo = document.querySelector('.goog-te-combo') as HTMLSelectElement;
-  if (selectCombo) {
-    selectCombo.value = langCode;
-    selectCombo.dispatchEvent(new Event('change'));
-  } else {
-    let attempts = 0;
-    const interval = setInterval(() => {
-      attempts++;
-      const innerCombo = document.querySelector('.goog-te-combo') as HTMLSelectElement;
-      if (innerCombo) {
-        innerCombo.value = langCode;
-        innerCombo.dispatchEvent(new Event('change'));
-        clearInterval(interval);
-      }
-      if (attempts > 30) clearInterval(interval);
-    }, 400);
+  // Set the fresh translation cookie if NOT English
+  if (lang !== 'en') {
+    const value = `/en/${lang}`;
+    const expires = "expires=Fri, 31 Dec 9999 23:59:59 GMT";
+    
+    // 1. Host-only cookie (the absolute safest/most robust for sandboxed iframes)
+    document.cookie = `googtrans=${value}; path=/; ${expires}${suffix}`;
+    
+    // 2. Specific domain cookie
+    document.cookie = `googtrans=${value}; path=/; domain=${window.location.hostname}; ${expires}${suffix}`;
   }
 };
 
-// Detection core
+// Browser-based system language detection fallback
+const getBrowserLanguage = (): 'en' | 'bn' | 'hi' => {
+  const langs = navigator.languages || [navigator.language];
+  for (const l of langs) {
+    const lower = l.toLowerCase();
+    if (lower.startsWith('bn') || lower.includes('bengali') || lower.includes('bengal')) {
+      return 'bn';
+    }
+    if (lower.startsWith('hi') || lower.includes('hindi')) {
+      return 'hi';
+    }
+  }
+  return 'en';
+};
+
+// Bulletproof check to extract active language from URL hash, cookie, or localStorage
+export const getInitialLanguage = (): 'en' | 'bn' | 'hi' => {
+  // 1. Check URL Hash (highest priority)
+  const hash = window.location.hash;
+  if (hash && hash.includes('googtrans')) {
+    const match = hash.match(/googtrans\(en\|(bn|hi)\)/);
+    if (match && match[1]) {
+      return match[1] as 'bn' | 'hi';
+    }
+  }
+
+  // 2. Check Cookie
+  const cookieMatch = document.cookie.match(/googtrans=\/en\/(bn|hi)/);
+  if (cookieMatch && cookieMatch[1]) {
+    return cookieMatch[1] as 'bn' | 'hi';
+  }
+
+  // 3. Check LocalStorage
+  const saved = localStorage.getItem('dasmo_lang_choice');
+  if (saved === 'bn' || saved === 'hi' || saved === 'en') {
+    return saved as 'en' | 'bn' | 'hi';
+  }
+
+  return 'en';
+};
+
+// Force change language with reload (to avoid broken iframe / layout mismatches)
+export const changeLanguage = (langCode: 'en' | 'bn' | 'hi') => {
+  setTranslationCookie(langCode);
+  localStorage.setItem('dasmo_lang_choice', langCode);
+  
+  // Hash routing is a legendary fallback that works 100% when localStorage/cookies get restricted inside outer Chrome/Safari sandboxes
+  if (langCode === 'en') {
+    if (window.location.hash.includes('googtrans')) {
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  } else {
+    window.location.hash = `#googtrans(en|${langCode})`;
+  }
+  
+  // Give cookies/hash a fraction of a millisecond to be written, then reload
+  setTimeout(() => {
+    window.location.reload();
+  }, 100);
+};
+
+// Simple fetch timeout controller helper to prevent infinite network delays in geo APIs
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 2000): Promise<Response> => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+};
+
+// Detection core with fast timeouts to avoid a 10s page hang
 const detectLanguageByIP = async (): Promise<'bn' | 'hi' | 'en'> => {
   try {
-    const response = await fetch('https://ipapi.co/json/');
+    const response = await fetchWithTimeout('https://ipapi.co/json/');
     if (!response.ok) throw new Error('IP API lookup failed');
     const data = await response.json();
     const region = (data.region || '').toLowerCase();
@@ -53,12 +126,12 @@ const detectLanguageByIP = async (): Promise<'bn' | 'hi' | 'en'> => {
   } catch (err) {
     console.warn("IP Language detection backup error:", err);
   }
-  return 'en';
+  return getBrowserLanguage();
 };
 
 const detectLanguageByCoords = async (lat: number, lon: number): Promise<'bn' | 'hi' | 'en'> => {
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`,
       { headers: { 'Accept-Language': 'en' } }
     );
@@ -78,53 +151,70 @@ const detectLanguageByCoords = async (lat: number, lon: number): Promise<'bn' | 
   return detectLanguageByIP();
 };
 
-export function initGoogleTranslateScript() {
-  const SCRIPT_ID = 'google-translate-script';
-  if (!document.getElementById(SCRIPT_ID)) {
-    // 1. Set window init handler
-    (window as any).googleTranslateElementInit = () => {
-      new (window as any).google.translate.TranslateElement({
-        pageLanguage: 'en',
-        includedLanguages: 'en,bn,hi',
-        layout: (window as any).google.translate.TranslateElement.InlineLayout.SIMPLE,
-        autoDisplay: false
-      }, 'google_translate_element_hidden');
-    };
-
-    // 2. Load the Translation script
-    const script = document.createElement('script');
-    script.id = SCRIPT_ID;
-    script.type = 'text/javascript';
-    script.src = 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
-    document.body.appendChild(script);
-
-    // 3. Inject any initial cookie translation state
-    const saved = localStorage.getItem('dasmo_lang_choice') || 'en';
-    if (saved !== 'en') {
-      setTranslationCookie(saved);
-    }
-  }
-}
-
-// ----------------------------------------------------
-// Navigation bar language picker
-// ----------------------------------------------------
 export function LanguageSelector() {
-  const [currentLang, setCurrentLang] = useState<'en' | 'bn' | 'hi'>('en');
+  const [currentLang, setCurrentLang] = useState<'en' | 'bn' | 'hi'>(getInitialLanguage);
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    initGoogleTranslateScript();
-    
-    const saved = localStorage.getItem('dasmo_lang_choice') as 'en' | 'bn' | 'hi' || 'en';
-    setCurrentLang(saved);
-    triggerGoogleTranslate(saved);
+    const active = getInitialLanguage();
+    setCurrentLang(active);
+    localStorage.setItem('dasmo_lang_choice', active);
+
+    // Dynamic polling to auto-synchronize UI when Google Translate changes language via browser bar
+    const interval = setInterval(() => {
+      // 1. Check select-combo if present on page
+      const combo = document.querySelector('.goog-te-combo') as HTMLSelectElement | null;
+      if (combo) {
+        const val = combo.value; // e.g. 'bn', 'hi', or '' (for English)
+        const targetLang: 'en' | 'bn' | 'hi' = (val === 'bn' || val === 'hi') ? val : 'en';
+        setCurrentLang((prev) => {
+          if (prev !== targetLang) {
+            localStorage.setItem('dasmo_lang_choice', targetLang);
+            return targetLang;
+          }
+          return prev;
+        });
+        return;
+      }
+
+      // 2. Fallback check for googtrans cookie
+      const cookieMatch = document.cookie.match(/googtrans=\/en\/(bn|hi)/);
+      if (cookieMatch && cookieMatch[1]) {
+        const targetLang = cookieMatch[1] as 'bn' | 'hi';
+        setCurrentLang((prev) => {
+          if (prev !== targetLang) {
+            localStorage.setItem('dasmo_lang_choice', targetLang);
+            return targetLang;
+          }
+          return prev;
+        });
+        return;
+      }
+
+      // 3. Fallback check for URL Hash
+      const hash = window.location.hash;
+      if (hash && hash.includes('googtrans')) {
+        const match = hash.match(/googtrans\(en\|(bn|hi)\)/);
+        if (match && match[1]) {
+          const targetLang = match[1] as 'bn' | 'hi';
+          setCurrentLang((prev) => {
+            if (prev !== targetLang) {
+              localStorage.setItem('dasmo_lang_choice', targetLang);
+              return targetLang;
+            }
+            return prev;
+          });
+        }
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
   }, []);
 
   const handleSelect = (lang: 'en' | 'bn' | 'hi') => {
     setCurrentLang(lang);
-    triggerGoogleTranslate(lang);
     setIsOpen(false);
+    changeLanguage(lang);
   };
 
   const getLangName = (code: 'en' | 'bn' | 'hi') => {
@@ -136,10 +226,7 @@ export function LanguageSelector() {
   };
 
   return (
-    <div className="relative font-sans z-50">
-      {/* Hidden element needed for Google Translate */}
-      <div id="google_translate_element_hidden" style={{ display: 'none', visibility: 'hidden' }}></div>
-      
+    <div className="relative font-sans z-50 notranslate">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 text-xs md:text-sm font-semibold bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white px-3 md:px-4 py-2.5 rounded-xl border border-white/5 hover:border-white/10 transition-all cursor-pointer"
@@ -152,7 +239,7 @@ export function LanguageSelector() {
       {isOpen && (
         <>
           <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsOpen(false)} />
-          <div className="absolute right-0 mt-2 w-48 bg-[#0c101d] border border-white/10 rounded-2xl p-2.5 shadow-2xl z-50 animate-in fade-in slide-in-from-top-3 duration-255">
+          <div className="absolute right-0 mt-2 w-48 bg-[#0c101d] border border-white/10 rounded-2xl p-2.5 shadow-2xl z-50 animate-in fade-in slide-in-from-top-3 duration-200">
             <div className="text-[10px] text-slate-500 font-extrabold px-3 py-1.5 uppercase tracking-wider border-b border-white/5 mb-1.5 font-mono">
               Choose Language
             </div>
@@ -187,9 +274,6 @@ export function LanguageSelector() {
   );
 }
 
-// ----------------------------------------------------
-// Automatic Consent overlay prompt modal
-// ----------------------------------------------------
 export function LanguageConsentOverlay() {
   const [isVisible, setIsVisible] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
@@ -209,7 +293,7 @@ export function LanguageConsentOverlay() {
 
   const handleManualSelection = (lang: 'en' | 'bn' | 'hi') => {
     localStorage.setItem('dasmo_lang_preferred', 'manual');
-    triggerGoogleTranslate(lang);
+    changeLanguage(lang);
     setIsVisible(false);
   };
 
@@ -223,22 +307,20 @@ export function LanguageConsentOverlay() {
           const lon = pos.coords.longitude;
           const detectedCode = await detectLanguageByCoords(lat, lon);
           
-          triggerGoogleTranslate(detectedCode);
           localStorage.setItem('dasmo_lang_preferred', 'auto');
           
           const label = detectedCode === 'bn' ? 'Bengali (বাংলা)' : detectedCode === 'hi' ? 'Hindi (हिन्दी)' : 'English';
           setSelectedLangName(label);
           setIsDetecting(false);
           
-          // Close after short success display
           setTimeout(() => {
+            changeLanguage(detectedCode);
             setIsVisible(false);
-          }, 2000);
+          }, 1500);
         },
         async (error) => {
           console.warn("Geolocation permission error, falling back to IP:", error);
           const detectedCode = await detectLanguageByIP();
-          triggerGoogleTranslate(detectedCode);
           localStorage.setItem('dasmo_lang_preferred', 'auto');
           
           const label = detectedCode === 'bn' ? 'Bengali (বাংলা)' : detectedCode === 'hi' ? 'Hindi (हिन्दी)' : 'English';
@@ -246,22 +328,23 @@ export function LanguageConsentOverlay() {
           setIsDetecting(false);
           
           setTimeout(() => {
+            changeLanguage(detectedCode);
             setIsVisible(false);
-          }, 2000);
+          }, 1500);
         },
-        { timeout: 7000 }
+        { timeout: 2500 }
       );
     } else {
       // Direct IP support fallback
       detectLanguageByIP().then((detectedCode) => {
-        triggerGoogleTranslate(detectedCode);
         localStorage.setItem('dasmo_lang_preferred', 'auto');
         const label = detectedCode === 'bn' ? 'Bengali (বাংলা)' : detectedCode === 'hi' ? 'Hindi (हिन्दी)' : 'English';
         setSelectedLangName(label);
         setIsDetecting(false);
         setTimeout(() => {
+          changeLanguage(detectedCode);
           setIsVisible(false);
-        }, 2000);
+        }, 1500);
       });
     }
   };
@@ -342,7 +425,7 @@ export function LanguageConsentOverlay() {
             <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs font-bold leading-none shrink-0 border border-emerald-500/30">✓</div>
             <div className="text-left">
               <p className="text-xs font-black text-white uppercase tracking-wider">Location Found!</p>
-              <p className="text-xs text-emerald-400 font-extrabold mt-0.5">Language updated: {selectedLangName}</p>
+              <p className="text-xs text-emerald-400 font-extrabold mt-0.5">Setting Language to {selectedLangName} and refreshing...</p>
             </div>
           </div>
         )}

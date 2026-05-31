@@ -4,25 +4,166 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dasmo Cyber Cafe</title>
-    <!-- Google Translate Script -->
+    <!-- Suppress cross-origin third party translation script warnings and load google translate early -->
     <script type="text/javascript">
+      window.addEventListener('error', function(e) {
+        if (e.message && (
+          e.message.indexOf('Script error') !== -1 || 
+          e.message.indexOf('google') !== -1 ||
+          e.message.indexOf('translate') !== -1
+        )) {
+          e.stopImmediatePropagation();
+        }
+      }, true);
+
       function googleTranslateElementInit() {
-        new google.translate.TranslateElement({
-          pageLanguage: 'en',
-          includedLanguages: 'en,bn,hi',
-          layout: google.translate.TranslateElement.InlineLayout.SIMPLE
-        }, 'google_translate_element');
+        const init = () => {
+          let el = document.getElementById('google_translate_element');
+          if (!el) {
+            el = document.createElement('div');
+            el.id = 'google_translate_element';
+            el.style.display = 'none';
+            document.body.appendChild(el);
+          }
+          new google.translate.TranslateElement({
+            pageLanguage: 'en',
+            includedLanguages: 'en,bn,hi',
+            layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
+            autoDisplay: false
+          }, 'google_translate_element');
+        };
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', init);
+        } else {
+          init();
+        }
       }
     </script>
-    <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+    <script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+    <script type="text/javascript">
+      // Bulletproof fallback: programmatically synchronize Google Translate select-combo with localStorage choice
+      (function() {
+        function getSavedLang() {
+          var saved = localStorage.getItem('dasmo_lang_choice');
+          if (saved) return saved;
+          // Check hash as alternative
+          var hash = window.location.hash;
+          if (hash && hash.indexOf('googtrans') !== -1) {
+            var match = hash.match(/googtrans\(en\|([a-z]{2})\)/);
+            if (match && match[1]) {
+              localStorage.setItem('dasmo_lang_choice', match[1]);
+              return match[1];
+            }
+          }
+          return 'en';
+        }
+
+        // Enforce the URL hash immediately based on saved setting so Google's JS parses it on boot
+        var current = getSavedLang();
+        if (current !== 'en') {
+          if (!window.location.hash.includes('googtrans')) {
+            window.location.hash = '#googtrans(en|' + current + ')';
+          }
+        }
+
+        var syncInterval = setInterval(function() {
+          var savedLang = getSavedLang();
+          var selectCombo = document.querySelector('.goog-te-combo');
+          if (selectCombo) {
+            var targetVal = savedLang === 'en' ? '' : savedLang;
+            if (selectCombo.value !== targetVal) {
+              selectCombo.value = targetVal;
+              selectCombo.dispatchEvent(new Event('change'));
+            }
+          }
+        }, 150);
+
+        // Slow down checks but maintain ongoing sync for fully dynamic client-side SPA updates
+        setTimeout(function() {
+          clearInterval(syncInterval);
+          setInterval(function() {
+            var savedLang = getSavedLang();
+            var selectCombo = document.querySelector('.goog-te-combo');
+            if (selectCombo) {
+              var targetVal = savedLang === 'en' ? '' : savedLang;
+              if (selectCombo.value !== targetVal) {
+                selectCombo.value = targetVal;
+                selectCombo.dispatchEvent(new Event('change'));
+              }
+            }
+          }, 2000);
+        }, 10000);
+      })();
+    </script>
     <style>
-      /* Hide top banner frame that pushes page down */
+      /* Hide Google Translate top banner frames entirely */
+      iframe.goog-te-banner-frame,
+      .goog-te-banner-frame,
+      .goog-te-banner,
       .goog-te-banner-frame.skiptranslate {
         display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        width: 0 !important;
+        opacity: 0 !important;
+      }
+
+      /* Reset any layout pushing done by Google Translate */
+      html, body {
+        top: 0 !important;
+        margin-top: 0 !important;
+        position: static !important;
       }
       body {
         top: 0px !important;
+        margin-top: 0px !important;
       }
+
+      /* Hide tooltip popups when mouse hovers over translated words */
+      #goog-gt-tt,
+      #goog-gt-tt-balloon,
+      .goog-gt-tt,
+      .goog-tooltip,
+      .goog-tooltip:hover,
+      body > .skiptranslate,
+      iframe.skiptranslate,
+      .goog-te-balloon-frame,
+      #goog-gt-tt\.letter,
+      .goog-te-ftab-balloon,
+      .goog-te-balloon,
+      #goog-gt-tt-balloon {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+
+      /* Disable translation highlights on translated elements completely */
+      .goog-text-highlight {
+        background-color: transparent !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border: none !important;
+        pointer-events: none !important; /* Block mouse triggers so original text popups are impossible */
+      }
+
+      /* Prevent Bengali and Hindi characters/headings from overlapping when translated */
+      html.translated-ltr h1,
+      html.translated-ltr h2,
+      html.translated-ltr h3,
+      html.translated-ltr h4,
+      html.translated-ltr .font-display,
+      html.translated-rtl h1,
+      html.translated-rtl h2,
+      html.translated-rtl h3,
+      html.translated-rtl h4,
+      html.translated-rtl .font-display {
+        line-height: 1.35 !important;
+        letter-spacing: normal !important;
+        word-spacing: 0.05em !important;
+      }
+
       /* Clean up widget look */
       .goog-te-gadget-simple {
         background-color: rgba(255, 255, 255, 0.05) !important;
@@ -48,6 +189,8 @@
     </style>
   </head>
   <body>
+    <!-- Google Translate hidden binding container (rendered off-screen so Google renders the components successfully) -->
+    <div id="google_translate_element" style="position: absolute; top: -999px; left: -999px; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
