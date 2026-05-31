@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+             (request.auth.token.email == "suvojitpal797@gmail.com" || request.auth.token.email == "subhojitpaul26042004@gmail.com") && 
+             request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Settings collection containing the catalog and booking config
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Individual bookings
+    match /bookings/{bookingId} {
+      allow read: if isAdmin();
+      allow create: if request.resource.data.name is string 
+                   && request.resource.data.name.size() <= 150
+                   && request.resource.data.mobile is string
+                   && request.resource.data.mobile.size() <= 30
+                   && request.resource.data.work is string
+                   && request.resource.data.work.size() <= 250
+                   && request.resource.data.date is string
+                   && request.resource.data.date.size() <= 30
+                   && request.resource.data.time is string
+                   && request.resource.data.time.size() <= 100
+                   && existsAfter(/databases/$(database)/documents/client_limits/$(request.resource.data.mobile));
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Client limits tracking document to enforce rate limiting
+    match /client_limits/{phoneNumber} {
+      allow read: if true;
+      allow write: if isAdmin() || (
+        request.resource.data.bookingIds is list
+        && request.resource.data.bookingIds.size() <= get(/databases/$(database)/documents/settings/catalog).data.bookingConfig.limitPerPhone
+      );
+    }
+  }
+}

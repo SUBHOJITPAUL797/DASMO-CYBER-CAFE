@@ -1,0 +1,6 @@
+{
+  "name": "Dasmo Cyber Cafe",
+  "description": "Professional digital services, form fill-up, software support, and software development solutions.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

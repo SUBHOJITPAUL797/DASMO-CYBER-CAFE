@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "CatalogSettings": {
+      "title": "CatalogSettings",
+      "description": "Live custom configuration of digital services, printing prices, website status parameters, and walk-in operating schedules.",
+      "type": "object",
+      "properties": {
+        "central": { "type": "array", "description": "Central Government Schemes" },
+        "state": { "type": "array", "description": "State Government Schemes" },
+        "special": { "type": "array", "description": "Special High Priority Schemes" },
+        "support": { "type": "array", "description": "Technical system support services" },
+        "printing": { "type": "array", "description": "Xerox and printing rates catalog data" },
+        "software_dev": { "type": "array", "description": "Vite React and mobile dev contract lists" },
+        "statusInfo": { "type": "object", "description": "Cafe operability indicators and announcement banner strings" },
+        "bookingConfig": { "type": "object", "description": "Operating hour parameters and limit constraints for bookings" }
+      },
+      "required": ["central", "state", "special", "support", "printing", "software_dev", "statusInfo", "bookingConfig"]
+    },
+    "BookingItem": {
+      "title": "BookingItem",
+      "description": "An individual client entry booking slot representation.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "mobile": { "type": "string" },
+        "work": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "mobile", "work", "date", "time", "createdAt"]
+    },
+    "ClientLimits": {
+      "title": "ClientLimits",
+      "description": "Rate limiting tracking document mapping a unique active tel connection to its booking identifiers.",
+      "type": "object",
+      "properties": {
+        "bookingIds": { "type": "array" },
+        "phoneNumber": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bookingIds", "phoneNumber", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/settings/catalog": {
+      "schema": "CatalogSettings",
+      "description": "Unique central configuration variables document."
+    },
+    "/bookings/{bookingId}": {
+      "schema": "BookingItem",
+      "description": "A collections of all walk-in slot reservations."
+    },
+    "/client_limits/{phoneNumber}": {
+      "schema": "ClientLimits",
+      "description": "Dynamic mapping storing list counts of active bookings to prevent DDoS/wallet depletion."
+    }
+  }
+}
