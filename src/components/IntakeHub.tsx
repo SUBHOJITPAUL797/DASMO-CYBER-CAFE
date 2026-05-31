@@ -345,6 +345,12 @@ export default function IntakeHub() {
     return slots;
   };
 
+  const handlePrintToken = () => {
+    document.body.classList.add('printing-token');
+    window.print();
+    document.body.classList.remove('printing-token');
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setBookingError('');
@@ -821,7 +827,7 @@ export default function IntakeHub() {
                 <p className="text-xs text-slate-300 mt-2">Your booking has been compiled successfully. Please save or print this token receipt.</p>
              </div>
 
-             <div className="bg-[#030712] border border-white/5 rounded-2xl p-6 space-y-6 relative font-mono text-sm">
+             <div id="print-token-area" className="bg-[#030712] border border-white/5 rounded-2xl p-6 space-y-6 relative font-mono text-sm">
                 
                 <div className="flex justify-between items-center bg-blue-500/5 hover:bg-blue-500/10 p-4 rounded-xl border border-blue-500/20">
                    <div>
@@ -917,7 +923,7 @@ export default function IntakeHub() {
 
              <div className="mt-8 flex gap-4">
                 <button
-                  onClick={() => window.print()}
+                  onClick={handlePrintToken}
                   className="flex-1 justify-center inline-flex items-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all cursor-pointer"
                 >
                   <Download size={16} /> Print/Download Token

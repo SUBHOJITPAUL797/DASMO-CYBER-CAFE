@@ -40,6 +40,12 @@ export default function RateCalculator() {
   const operatorDiscount = subtotal > 200 ? Math.round(subtotal * 0.1) : 0;
   const total = subtotal - operatorDiscount;
 
+  const handlePrint = () => {
+    document.body.classList.add('printing-receipt');
+    window.print();
+    document.body.classList.remove('printing-receipt');
+  };
+
   return (
     <section id="calculator" className="py-20 bg-slate-950/80 border-t border-slate-900 relative">
       <div className="absolute inset-0 bg-gradient-to-b from-[#030712] via-blue-950/10 to-[#030712] pointer-events-none" />
@@ -165,7 +171,7 @@ export default function RateCalculator() {
                 </div>
              </div>
 
-             <div className="bg-[#030712] border border-white/5 rounded-2xl p-5 space-y-4 font-mono text-sm shadow-inner relative">
+             <div id="print-receipt-area" className="bg-[#030712] border border-white/5 rounded-2xl p-5 space-y-4 font-mono text-sm shadow-inner relative">
                 {/* Visual authentic layout design */}
                 <div className="text-center border-b border-slate-800 pb-4 mb-4">
                   <h4 className="font-display font-black text-white text-base tracking-wider">DASMO CYBER CAFE</h4>
@@ -233,8 +239,8 @@ export default function RateCalculator() {
 
              <div className="mt-6 flex gap-4">
                <button 
-                 onClick={() => window.print()}
-                 className="flex-1 justify-center inline-flex items-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-sm"
+                 onClick={handlePrint}
+                 className="flex-1 justify-center inline-flex items-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-sm cursor-pointer"
                >
                  <ReceiptText size={16} /> Print Estimate
                </button>

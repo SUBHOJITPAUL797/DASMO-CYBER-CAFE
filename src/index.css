@@ -20,3 +20,131 @@ body {
 *::-webkit-scrollbar {
   display: none;            /* Chrome, Safari and Opera */
 }
+
+@media print {
+  /* Default white page background and absolute black text color for high-fidelity printing */
+  html, body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    font-family: monospace, ui-monospace, monospace !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Completely hide all other elements of the website */
+  header, footer, nav, section, .no-print, #app-root, main {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    opacity: 0 !important;
+  }
+
+  /* Force display of the specific printing wrapper */
+  body.printing-receipt #print-receipt-area,
+  body.printing-receipt #print-receipt-area * {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  body.printing-token #print-token-area,
+  body.printing-token #print-token-area * {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  /* Force display of flex boxes and key layouts inside active printing */
+  body.printing-receipt #print-receipt-area div,
+  body.printing-token #print-token-area div,
+  body.printing-receipt #print-receipt-area p,
+  body.printing-token #print-token-area p {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  /* Ensure text alignments and layouts inside the receipts are correctly formatted */
+  body.printing-receipt #print-receipt-area .text-center,
+  body.printing-token #print-token-area .text-center {
+    justify-content: center !important;
+    text-align: center !important;
+    display: block !important;
+  }
+
+  body.printing-receipt #print-receipt-area .flex-col,
+  body.printing-token #print-token-area .flex-col {
+    flex-direction: column !important;
+  }
+
+  body.printing-receipt #print-receipt-area .justify-between,
+  body.printing-token #print-token-area .justify-between {
+    justify-content: space-between !important;
+  }
+
+  /* Receipt layout specific dimensions and centering styling */
+  #print-receipt-area, #print-token-area {
+    position: absolute !important;
+    top: 20px !important;
+    left: 0 !important;
+    right: 0 !important;
+    margin: 0 auto !important;
+    width: 90% !important;
+    max-width: 440px !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: 3px double #000000 !important;
+    padding: 24px !important;
+    box-shadow: none !important;
+    border-radius: 8px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Invert high-contrast borders and text colors */
+  #print-receipt-area *, 
+  #print-token-area * {
+    color: #000000 !important;
+    border-color: #000000 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    font-weight: 600 !important;
+  }
+
+  /* Set titles and key tags to bold */
+  #print-receipt-area h4, 
+  #print-token-area h3,
+  .font-black, .font-bold {
+    font-weight: 850 !important;
+    color: #000000 !important;
+  }
+
+  /* Make sure QR code stands out vividly */
+  #print-token-area img {
+    background-color: #ffffff !important;
+    display: block !important;
+    margin: 0 auto !important;
+    border: 1px solid #000000 !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Render custom digital barcode lines as black stripes on white receipt paper */
+  #print-receipt-area div.bg-white\/5 {
+    background-color: #ffffff !important;
+    border: 1px solid #000000 !important;
+    opacity: 1 !important;
+  }
+  
+  #print-receipt-area div.bg-white\/5 div {
+    background-color: #000000 !important;
+    height: 100% !important;
+    display: inline-block !important;
+  }
+}
