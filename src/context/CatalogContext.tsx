@@ -35,6 +35,7 @@ export interface CatalogData {
     endHour: string;       // e.g. "21:00"
     slotGap: number;       // e.g. 15 | 30 | 45 | 60
     limitPerPhone: number; // e.g. 1 | 2 | 3 | 5
+    disablePredefinedServices?: boolean;
   };
 }
 
@@ -72,11 +73,15 @@ function serializeCatalog(raw: any): CatalogData {
       locationText: 'Ardhagram, Mejhia',
       cafeStatus: 'auto'
     },
-    bookingConfig: raw.bookingConfig || {
+    bookingConfig: raw.bookingConfig ? {
+      ...raw.bookingConfig,
+      disablePredefinedServices: !!raw.bookingConfig.disablePredefinedServices
+    } : {
       startHour: '09:00',
       endHour: '21:00',
       slotGap: 30,
-      limitPerPhone: 3
+      limitPerPhone: 3,
+      disablePredefinedServices: false
     }
   };
 }
@@ -112,11 +117,15 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
               locationText: 'Ardhagram, Mejhia',
               cafeStatus: 'auto'
             },
-            bookingConfig: data.bookingConfig || {
+            bookingConfig: data.bookingConfig ? {
+              ...data.bookingConfig,
+              disablePredefinedServices: !!data.bookingConfig.disablePredefinedServices
+            } : {
               startHour: '09:00',
               endHour: '21:00',
               slotGap: 30,
-              limitPerPhone: 3
+              limitPerPhone: 3,
+              disablePredefinedServices: false
             },
             updatedAt: data.updatedAt
           });

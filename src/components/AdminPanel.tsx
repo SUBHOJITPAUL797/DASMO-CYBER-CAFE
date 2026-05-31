@@ -906,6 +906,21 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                               </select>
                             </div>
                           </div>
+
+                          <div className="pt-3 border-t border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                              <input
+                                id="admin-disable-services"
+                                type="checkbox"
+                                checked={!!editedCatalog.bookingConfig?.disablePredefinedServices}
+                                onChange={(e) => updateBookingConfigField('disablePredefinedServices', e.target.checked)}
+                                className="w-4 h-4 rounded border-white/10 text-blue-600 focus:ring-blue-500 focus:ring-offset-[#121828] bg-[#0b0f19] cursor-pointer"
+                              />
+                              <label htmlFor="admin-disable-services" className="text-xs font-bold text-slate-300 cursor-pointer select-none">
+                                Disable Predefined Services Dropdown (Force Custom Appointment Input Only)
+                              </label>
+                            </div>
+                          </div>
                           
                           <p className="text-[10px] text-slate-500 mt-1 font-semibold">Changes are secure and securely enforced server-side. Click Save main database button below to apply.</p>
                         </div>

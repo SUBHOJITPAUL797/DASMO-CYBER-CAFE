@@ -81,6 +81,13 @@ export default function IntakeHub() {
     };
   }, []);
 
+  // Force custom service type selection when predefined services dropdown is turned off by admin
+  useEffect(() => {
+    if (catalog.bookingConfig?.disablePredefinedServices) {
+      setSelectedServiceId('other');
+    }
+  }, [catalog.bookingConfig?.disablePredefinedServices]);
+
   const stopStaffCamera = () => {
     if (staffAnimationFrameRef.current) {
       cancelAnimationFrame(staffAnimationFrameRef.current);
@@ -588,58 +595,80 @@ export default function IntakeHub() {
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="space-y-3">
-                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1">Service Category *</label>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {(['central', 'state', 'special', 'support'] as const).map((cat) => (
-                        <button
-                          key={cat}
-                          type="button"
-                          onClick={() => setSelectedCategory(cat)}
-                          className={`py-2.5 px-3 rounded-xl text-xs font-bold border capitalize transition-all cursor-pointer ${selectedCategory === cat ? 'bg-blue-500/20 border-blue-500 text-blue-300 shadow-sm' : 'bg-[#151b2e]/60 border-white/5 text-slate-400 hover:border-white/10'}`}
-                        >
-                          {cat} Services
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
+                {catalog.bookingConfig?.disablePredefinedServices ? (
                   <div className="space-y-2">
-                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">Select Digital Scheme *</label>
-                    <select
-                      value={selectedServiceId}
-                      onChange={(e) => {
-                        setSelectedServiceId(e.target.value);
-                        if (e.target.value !== 'other') {
-                          setCustomWorkName('');
-                        }
-                      }}
-                      className="w-full bg-[#151b2e] text-slate-100 px-4 py-3 rounded-xl border border-white/10 focus:border-blue-500 focus:outline-none font-semibold text-sm transition-all"
-                    >
-                      {activeServicesList.map((svc) => (
-                        <option key={svc.id} value={svc.id}>
-                          {svc.name}
-                        </option>
-                      ))}
-                      <option value="other">Other / Custom Service Option</option>
-                    </select>
-                  </div>
-
-                  {selectedServiceId === 'other' && (
-                    <div className="md:col-span-2 space-y-2">
-                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">Specify Custom Work Name *</label>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">Specify Service / Appointment Type *</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                        <CheckSquare size={18} />
+                      </div>
                       <input
                         type="text"
                         required
-                        placeholder="Ex. CSC Voter Card Printing or Electric Bill Payments"
+                        placeholder="Ex. Aadhaar Card Update, New Registration, Voter Card, etc."
                         value={customWorkName}
-                        onChange={(e) => setCustomWorkName(e.target.value)}
-                        className="w-full bg-[#151b2e] text-slate-100 px-4 py-3 rounded-xl border border-white/10 focus:border-blue-500 focus:outline-none font-medium transition-all"
+                        onChange={(e) => {
+                          setCustomWorkName(e.target.value);
+                          setSelectedServiceId('other');
+                        }}
+                        className="w-full bg-[#151b2e] text-slate-100 pl-11 pr-4 py-3 rounded-xl border border-white/10 focus:border-blue-500 focus:outline-none font-medium transition-all"
                       />
                     </div>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1">Service Category *</label>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {(['central', 'state', 'special', 'support'] as const).map((cat) => (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => setSelectedCategory(cat)}
+                            className={`py-2.5 px-3 rounded-xl text-xs font-bold border capitalize transition-all cursor-pointer ${selectedCategory === cat ? 'bg-blue-500/20 border-blue-500 text-blue-300 shadow-sm' : 'bg-[#151b2e]/60 border-white/5 text-slate-400 hover:border-white/10'}`}
+                          >
+                            {cat} Services
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">Select Digital Scheme *</label>
+                      <select
+                        value={selectedServiceId}
+                        onChange={(e) => {
+                          setSelectedServiceId(e.target.value);
+                          if (e.target.value !== 'other') {
+                            setCustomWorkName('');
+                          }
+                        }}
+                        className="w-full bg-[#151b2e] text-slate-100 px-4 py-3 rounded-xl border border-white/10 focus:border-blue-500 focus:outline-none font-semibold text-sm transition-all"
+                      >
+                        {activeServicesList.map((svc) => (
+                          <option key={svc.id} value={svc.id}>
+                            {svc.name}
+                          </option>
+                        ))}
+                        <option value="other">Other / Custom Service Option</option>
+                      </select>
+                    </div>
+
+                    {selectedServiceId === 'other' && (
+                      <div className="md:col-span-2 space-y-2">
+                        <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">Specify Custom Work Name *</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ex. CSC Voter Card Printing or Electric Bill Payments"
+                          value={customWorkName}
+                          onChange={(e) => setCustomWorkName(e.target.value)}
+                          className="w-full bg-[#151b2e] text-slate-100 px-4 py-3 rounded-xl border border-white/10 focus:border-blue-500 focus:outline-none font-medium transition-all"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="grid md:grid-cols-12 gap-6 items-start">
                   <div className="md:col-span-5 space-y-2">
