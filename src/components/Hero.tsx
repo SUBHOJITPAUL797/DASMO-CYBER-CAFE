@@ -111,19 +111,27 @@ export default function Hero() {
               transition={{ duration: 0.8, delay: 0.25, ease: "easeOut" }}
               className="flex flex-col sm:flex-row gap-4"
             >
-              <a 
-                href="#services" 
-                className="inline-flex justify-center items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:from-blue-500 hover:to-blue-400 transition-all shadow-[0_0_40px_rgba(59,130,246,0.3)] hover:shadow-[0_0_50px_rgba(59,130,246,0.5)] hover:-translate-y-1.0 hover:scale-[1.02] duration-300 border border-blue-500/10"
+              <button 
+                onClick={() => {
+                  if ((window as any).setCurrentTab) {
+                    (window as any).setCurrentTab('services');
+                  }
+                }}
+                className="inline-flex justify-center items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:from-blue-500 hover:to-blue-400 transition-all shadow-[0_0_40px_rgba(59,130,246,0.3)] hover:shadow-[0_0_50px_rgba(59,130,246,0.5)] hover:-translate-y-1.0 hover:scale-[1.02] duration-300 border border-blue-500/10 cursor-pointer"
               >
                 Search Govt Schemes
                 <ArrowRight size={20} className="stroke-[3]" />
-              </a>
-              <a 
-                href="#pre-fill" 
-                className="inline-flex justify-center items-center gap-2 bg-[#10162a] text-white border border-white/10 px-8 py-4 rounded-2xl font-bold text-lg hover:bg-[#16203d] hover:border-white/20 transition-all backdrop-blur-sm"
+              </button>
+              <button 
+                onClick={() => {
+                  if ((window as any).setCurrentTab) {
+                    (window as any).setCurrentTab('booking');
+                  }
+                }}
+                className="inline-flex justify-center items-center gap-2 bg-[#10162a] text-white border border-white/10 px-8 py-4 rounded-2xl font-bold text-lg hover:bg-[#16203d] hover:border-white/20 transition-all backdrop-blur-sm cursor-pointer"
               >
                 Book Priority Token
-              </a>
+              </button>
             </motion.div>
             {/* Space buffer */}
             <div className="pt-2" />

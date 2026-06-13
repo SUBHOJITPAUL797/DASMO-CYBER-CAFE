@@ -142,7 +142,11 @@ export default function Services() {
              {/* Core Pillar 1: Printing, Scanning & Photo print rates */}
              <div 
                onClick={() => {
-                 document.getElementById('calculator')?.scrollIntoView({ behavior: 'smooth' });
+                 if ((window as any).setCurrentTab) {
+                   (window as any).setCurrentTab('calculator');
+                 } else {
+                   document.getElementById('calculator')?.scrollIntoView({ behavior: 'smooth' });
+                 }
                }}
                className="bg-[#0b0f1a] border border-blue-500/10 hover:border-blue-500/40 p-6 rounded-[2rem] transition-all duration-350 cursor-pointer shadow-lg hover:shadow-blue-500/5 hover:-translate-y-1 relative group overflow-hidden"
              >
@@ -188,7 +192,12 @@ export default function Services() {
                onClick={() => {
                  setSelectedCategory('all');
                  setSearchQuery('');
-                 document.getElementById('services-catalog-anchor')?.scrollIntoView({ behavior: 'smooth' });
+                 if ((window as any).setCurrentTab) {
+                   (window as any).setCurrentTab('services');
+                 }
+                 setTimeout(() => {
+                   document.getElementById('services-catalog-anchor')?.scrollIntoView({ behavior: 'smooth' });
+                 }, 50);
                }}
                className="bg-[#0b0f1a] border border-amber-500/10 hover:border-amber-500/40 p-6 rounded-[2rem] transition-all duration-350 cursor-pointer shadow-lg hover:shadow-amber-500/5 hover:-translate-y-1 relative group overflow-hidden"
              >
@@ -234,7 +243,12 @@ export default function Services() {
                onClick={() => {
                  setSelectedCategory('support');
                  setSearchQuery('');
-                 document.getElementById('services-catalog-anchor')?.scrollIntoView({ behavior: 'smooth' });
+                 if ((window as any).setCurrentTab) {
+                   (window as any).setCurrentTab('services');
+                 }
+                 setTimeout(() => {
+                   document.getElementById('services-catalog-anchor')?.scrollIntoView({ behavior: 'smooth' });
+                 }, 50);
                }}
                className="bg-[#0b0f1a] border border-rose-500/10 hover:border-rose-500/40 p-6 rounded-[2rem] transition-all duration-350 cursor-pointer shadow-lg hover:shadow-rose-500/5 hover:-translate-y-1 relative group overflow-hidden"
              >
